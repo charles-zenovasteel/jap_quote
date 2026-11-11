@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Zenova Japan 積算</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDGothic:wght@400;700&display=swap">
+<style>
+/* Layout: 左に工程タブ＋明細表、右に常時見える見積サマリー（狭い画面では下に積む） */
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#1b2230; --muted:#3f4756; --line:#b9c0cb; --soft:#eceff4;
+  --accent:#1f4e8c; --accent-ink:#ffffff; --steel:#33415c; --profit:#b8621b;
+  --c1:#1f4e8c; --c2:#3f8f7a; --c3:#8a6bb8; --c4:#b8621b;
+  --f-display:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-num:"BIZ UDGothic","BIZ UDPGothic","Hiragino Sans","Meiryo",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --panel:#1a2029; --ink:#e6e9ef; --muted:#c2c9d4; --line:#2c3441; --soft:#222a35;
+  --accent:#6f9fe0; --accent-ink:#0d1420; --steel:#aab6cc; --profit:#e39a5a;
+  --c1:#6f9fe0; --c2:#5fbfa3; --c3:#b39ae0; --c4:#e39a5a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --panel:#1a2029; --ink:#e6e9ef; --muted:#c2c9d4; --line:#2c3441; --soft:#222a35;
+  --accent:#6f9fe0; --accent-ink:#0d1420; --steel:#aab6cc; --profit:#e39a5a;
+  --c1:#6f9fe0; --c2:#5fbfa3; --c3:#b39ae0; --c4:#e39a5a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.75;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:10px}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand small{font-size:14px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.brand h1{margin:0;font-family:var(--f-display);font-weight:700;font-size:28px;letter-spacing:.04em;text-wrap:balance}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:10px 16px;min-height:44px}
+button:hover{border-color:var(--steel)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+button.ghost:hover{color:#c0392b}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:14px;color:var(--muted);letter-spacing:.06em;min-width:0}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-height:44px;min-width:0}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:1fr}}
+.steps{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.steps button{border:0;border-radius:0;border-right:1px solid var(--line);padding:10px 8px;display:flex;flex-direction:column;align-items:flex-start;gap:0;text-align:left;background:transparent;position:relative}
+.steps button:last-child{border-right:0}
+.steps .no{font-family:var(--f-num);font-size:14px;color:var(--muted)}
+.steps .nm{font-weight:700;font-size:18px}
+.steps .amt{font-family:var(--f-num);font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
+.steps button[aria-selected="true"]{background:var(--soft)}
+.steps button[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--sc)}
+@media (max-width:860px){.steps{grid-template-columns:repeat(4,1fr)}.steps button:nth-child(4){border-right:0}.steps button:nth-child(-n+4){border-bottom:1px solid var(--line)}}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.form .wide{grid-column:1/-1}
+.daysum{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.daysum .k{border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;min-width:120px}
+.daysum .k small{font-size:14px;color:var(--muted)}
+.daysum .k b{font-family:var(--f-num);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.daysum .k.main{background:var(--soft);border-color:var(--steel)}
+input::placeholder{color:var(--muted);opacity:.8}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sheet h2{margin:0;font-family:var(--f-display);font-size:20px;font-weight:700;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sheet h2 span{font-size:15px;font-weight:400;color:var(--muted)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th{font-size:14px;font-weight:500;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);letter-spacing:.05em;white-space:nowrap}
+td{padding:5px 4px;border-bottom:1px solid var(--soft);vertical-align:middle}
+td input,td select{padding:7px 8px}
+td.num input,input.num{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+td.out{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:8px;font-weight:500}
+tfoot td{border-bottom:0;padding-top:10px;font-weight:700}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.hint{font-size:15px;color:var(--muted)}
+.mh{margin:4px 0 -4px;font-size:16px;font-weight:700;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.profit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.box{border:1px solid var(--line);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.box h3{margin:0;font-size:16px}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{flex:1;border:0;border-radius:0;font-size:15px;padding:6px}
+.seg button[aria-pressed="true"]{background:var(--steel);color:var(--panel)}
+.inline{display:flex;align-items:center;gap:6px}
+.inline input{max-width:110px}
+aside.sum{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px;position:sticky;top:max(12px,env(safe-area-inset-top,0px))}
+@media (max-width:900px){aside.sum{position:static}}
+aside h2{margin:0;font-size:15px;letter-spacing:.16em;color:var(--muted);font-weight:500}
+.bar{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--soft)}
+.bar i{display:block;height:100%}
+.lines{display:flex;flex-direction:column}
+.ln{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);font-size:16px}
+.ln .sw{width:10px;height:10px;border-radius:2px}
+.ln b{font-family:var(--f-num);font-weight:500;font-variant-numeric:tabular-nums}
+.ln.sub{border-bottom:1px solid var(--ink);font-weight:700}
+.ln.sub b,.ln.tot b{font-weight:600}
+.pct{font-size:14px;color:var(--muted);margin-left:4px}
+.grand{background:var(--soft);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.grand small{font-size:14px;color:var(--muted);letter-spacing:.1em}
+.grand strong{font-family:var(--f-num);font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;overflow-wrap:anywhere}
+.grand .tax{font-family:var(--f-num);font-size:15px;color:var(--muted)}
+.chip{display:inline-block;font-size:14px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.chip.warn{border-color:#c0392b;color:#c0392b}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:16px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+textarea#exportBox{width:100%;height:140px;font-family:var(--f-num);font-size:15px;background:var(--soft);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:16px}
+.paper{background:#fff;color:#111;border:1px solid var(--line);padding:28px 30px;font-size:14px;line-height:1.5;display:flex;flex-direction:column;gap:8px;min-width:0;overflow-x:auto}
+.paper .ph{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px double #111;padding-bottom:8px;gap:12px}
+.pt-title{font-family:var(--f-display);font-size:26px;font-weight:700;letter-spacing:.3em}
+.pt-sub{font-size:16px;font-weight:700}
+.pt-co{text-align:right;font-weight:700}.pt-co span{font-weight:400;font-size:14px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pgrid b{display:block;font-size:13px;color:#555;letter-spacing:.1em}
+.ptotal{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;border:1.5px solid #111;padding:8px 12px}
+.ptotal strong{font-family:var(--f-num);font-size:24px}
+.pday{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;border-left:1px solid #999;padding-left:12px}
+.pday b{font-family:var(--f-num);font-size:19px}.pday small{font-size:12px;color:#555}
+.paper h4{margin:10px 0 0;font-size:16px;border-left:4px solid #111;padding-left:6px;display:flex;justify-content:space-between}
+.paper h4 span{font-family:var(--f-num);font-weight:500}
+table.pt{width:100%;min-width:0;border-collapse:collapse}
+table.pt th,table.pt td{border:1px solid #999;padding:3px 6px;font-size:14px;color:#111}
+table.pt th{background:#eee;font-weight:700;letter-spacing:0}
+table.pt .r{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.pnote{margin:0;font-size:14px}
+.pstamp{display:flex;justify-content:flex-end;margin-top:10px}.pstamp div{width:64px;height:64px;border:1px solid #999;margin-left:-1px;text-align:center;font-size:13px;padding-top:2px}
+.gwrap{overflow-x:auto}
+table.gantt{border-collapse:collapse;width:100%;min-width:0;table-layout:fixed;font-size:14px}
+table.gantt th,table.gantt td{border:1px solid var(--line);padding:0;height:24px;text-align:center;font-weight:400;color:var(--ink)}
+table.gantt .gl{width:190px;text-align:left;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.gantt .gd{width:48px;text-align:right;padding:0 4px;font-family:var(--f-num)}
+table.gantt th{font-size:12px;font-family:var(--f-num);background:var(--soft)}
+table.gantt .sun{color:#c0392b}table.gantt .sat{color:#2c6fbf}
+table.gantt td.sun,table.gantt td.sat{background:var(--soft)}
+table.gantt i{display:block;height:14px;margin:0 -1px}
+.g-prep{background:var(--steel)}.g-work{background:var(--c1)}.g-spare{background:repeating-linear-gradient(45deg,var(--c4) 0 3px,transparent 3px 6px)}
+.paper table.gantt th,.paper table.gantt td{border-color:#999;color:#111}
+.paper table.gantt th,.paper table.gantt td.sun,.paper table.gantt td.sat{background:#eee}
+.paper .g-prep{background:#555}.paper .g-work{background:#111}.paper .g-spare{background:repeating-linear-gradient(45deg,#111 0 2px,#fff 2px 5px)}
+@media print{.gwrap{overflow:visible}table.gantt{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.elist{display:flex;flex-direction:column}
+.erow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.erow .t{display:flex;flex-direction:column;min-width:0}
+.erow .t b{overflow-wrap:anywhere}
+.erow .t span{font-size:14px;color:var(--muted)}
+.erow .p{font-family:var(--f-num);font-weight:700}
+.erow .a{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.erow.cur{background:var(--soft)}
+@media (max-width:560px){.erow{grid-template-columns:1fr}.erow .a{justify-content:flex-start}}
+#pdfStage{position:fixed;left:-12000px;top:0;width:760px;background:#fff}
+.custbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:var(--soft);border-radius:8px;padding:10px 12px}
+.cform{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;border:1px solid var(--steel);border-radius:8px;padding:12px}
+.cform .wide{grid-column:1/-1}
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  :root{color-scheme:light}
+  .paper{font-size:13px}table.pt th,table.pt td{font-size:12.5px;padding:3px 5px}table.gantt th{font-size:10px}table.gantt .gl,table.gantt .gd{font-size:11.5px}
+  body{background:#fff!important;padding:0!important}
+  header.top,.steps,aside.sum,#exportSec,.screen-only,.toast{display:none!important}
+  .main{display:block}.sheet{border:0;padding:0;background:#fff}
+  .paper{border:0;padding:0;overflow:visible}
+  table.pt tr{break-inside:avoid}.paper h4{break-after:avoid}
+}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><small>ZENOVA JAPAN · ESTIMATE</small><h1>積算シート</h1></div>
+    <div class="tools">
+      <button class="primary" id="btnSave" hidden>見積を保存</button>
+      <button id="btnList" hidden>保存した見積</button>
+      <button id="btnCust" hidden>顧客リスト</button>
+      <button id="btnCopy">表形式でコピー</button>
+      <button id="btnText">見積サマリーをコピー</button>
+      <span id="saveWrap" hidden></span>
+      <span id="resetWrap"><button class="ghost" id="btnReset">新規（全消去）</button></span>
+    </div>
+  </header>
+
+
+  <div class="main">
+    <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+      <nav class="steps" role="tablist" id="steps"></nav>
+      <section class="sheet" id="sheet"></section>
+    </div>
+    <aside class="sum" aria-label="見積サマリー" id="sum"></aside>
+  </div>
+  <section class="sheet" id="listSec" hidden aria-label="保存した見積">
+    <h2>保存した見積<span>社内で共有されます。「開く」で編集を再開できます</span></h2>
+    <div class="inline" style="max-width:420px"><input id="listQ" placeholder="管理番号・現場名・お客様で検索" aria-label="見積を検索"></div>
+    <div id="listBody"><p class="hint">読み込み中…</p></div>
+    <div class="row-actions"><span></span><button id="listClose">閉じる</button></div>
+  </section>
+  <section class="sheet" id="custSec" hidden aria-label="顧客リスト">
+    <h2>顧客リスト<span>社内で共有されます。STEP 01 で選ぶと会社名・担当者などが入ります</span></h2>
+    <div class="row-actions" style="justify-content:flex-start"><div class="inline" style="flex:1 1 280px;max-width:420px"><input id="custQ" placeholder="会社名・担当者・電話で検索" aria-label="顧客を検索"></div><button class="primary" id="custNew">＋ 顧客を登録</button></div>
+    <div id="custForm" hidden></div>
+    <div id="custBody"><p class="hint">読み込み中…</p></div>
+    <div class="row-actions"><span></span><button id="custClose">閉じる</button></div>
+  </section>
+  <section class="sheet" id="exportSec" hidden>
+    <h2>コピー用テキスト<span>コピーできない環境では、ここを選択してコピーしてください</span></h2>
+    <textarea id="exportBox" readonly></textarea>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const KEY='zenova-estimate-v3';
+const yen=n=>'¥'+Math.round(n||0).toLocaleString('ja-JP');
+const num=v=>{const n=parseFloat(String(v??'').replace(/,/g,''));return isFinite(n)?n:0};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=id=>document.getElementById(id);
+const STEPS=[
+  {id:'site',no:'01',name:'現場・顧客',color:'var(--steel)'},
+  {id:'qty',no:'02',name:'数量・日数',color:'var(--steel)'},
+  {id:'equip',no:'03',name:'機材',color:'var(--c1)'},
+  {id:'labor',no:'04',name:'人工',color:'var(--c2)'},
+  {id:'mat',no:'05',name:'材料費',color:'var(--c3)'},
+  {id:'profit',no:'06',name:'利益',color:'var(--c4)'},
+  {id:'print',no:'07',name:'積算シート',color:'var(--ink)'}
+];
+/* ケーシング径ごとの標準日当たり成果（箇所/日）— 仮の値。実績に合わせて変更してください */
+const DIAS=[['800',2.5],['1000',2],['1200',1.5],['1500',1],['2000',0.7],['2500',0.5],['3000',0.4]];
+/* 主要機材 */
+const ROTS=[['RT-260',2600],['RT-200',2000],['RT-150',1500],['RT-120',1200]];
+const CRANES=['BM1000','7120','BM1500','TK750GFS'];
+const LENS=[['first','ファースト'],['l6','6m'],['l3','3m'],['l2','2m'],['l1','1m']];
+const capOf=m=>(ROTS.find(x=>x[0]===m)||[0,0])[1];
+const caseLen=r=>num(r.first)*num(S.main.firstLen)+6*num(r.l6)+3*num(r.l3)+2*num(r.l2)+num(r.l1);
+const needDepth=d=>S.qty.filter(q=>String(q.dia)===String(d)).reduce((a,q)=>Math.max(a,num(q.depth)),0);
+const maxDia=()=>S.qty.filter(q=>num(q.count)>0).reduce((a,q)=>Math.max(a,num(q.dia)),0);
+const mainAmt={
+  rot:r=>num(r.qty)*dayOf(r)*num(r.rate)+num(r.move),
+  crane:r=>num(r.qty)*dayOf(r)*num(r.rate)+num(r.move),
+  grab:r=>num(r.qty)*dayOf(r)*num(r.rate),
+  casing:r=>caseLen(r)*dayOf(r)*num(r.rate)
+};
+const mainTotal=()=>Object.keys(mainAmt).reduce((a,k)=>a+S.main[k].reduce((b,r)=>b+mainAmt[k](r),0),0);
+const stdPer=d=>(DIAS.find(x=>x[0]===String(d))||[0,1])[1];
+const COLS={
+  equip:[{k:'name',t:'機材名',w:'26%'},{k:'spec',t:'規格・能力',w:'16%'},{k:'qty',t:'台数',n:1},{k:'days',t:'日数',n:1,auto:1},{k:'rate',t:'日額単価',n:1},{k:'move',t:'回送・搬入費',n:1}],
+  labor:[{k:'name',t:'職種',w:'24%'},{k:'note',t:'内容',w:'22%'},{k:'qty',t:'人数',n:1},{k:'days',t:'日数',n:1,auto:1},{k:'rate',t:'人工単価',n:1}],
+  mat:[{k:'name',t:'品名',w:'26%'},{k:'spec',t:'規格',w:'18%'},{k:'qty',t:'数量',n:1},{k:'unit',t:'単位'},{k:'rate',t:'単価',n:1},{k:'loss',t:'ロス%',n:1}]
+};
+const dayOf=r=>String(r.days??'').trim()===''?schedule().total:num(r.days);
+const amount={
+  equip:r=>num(r.qty)*dayOf(r)*num(r.rate)+num(r.move),
+  labor:r=>num(r.qty)*dayOf(r)*num(r.rate),
+  mat:r=>num(r.qty)*(1+num(r.loss)/100)*num(r.rate)
+};
+const today=()=>new Date().toISOString().slice(0,10);
+const sample=()=>({sample:true,step:'site',
+  site:{name:'（例）〇〇橋 下部工 既存杭撤去工事',address:'（例）奈良県奈良市〇〇町',start:'',date:today()},
+  client:{company:'（例）〇〇建設株式会社',dept:'工事部',person:'（例）山田 太郎',tel:'',email:'',note:''},
+  qty:[{dia:'1500',count:'6',depth:'18',per:'1'},{dia:'1200',count:'4',depth:'15',per:'1.5'}],
+  sched:{setup:'2',demob:'1',spare:'10'},
+  main:{firstLen:'3',
+    rot:[{model:'RT-200',qty:'1',days:'',rate:'150000',move:'400000'}],
+    crane:[{model:'BM1000',qty:'1',days:'',rate:'110000',move:'350000'}],
+    grab:[{dia:'1500',qty:'1',days:'',rate:'15000'},{dia:'1200',qty:'1',days:'',rate:'12000'}],
+    casing:[{dia:'1500',first:'1',l6:'2',l3:'1',l2:'0',l1:'0',days:'',rate:'600'},{dia:'1200',first:'1',l6:'2',l3:'0',l2:'0',l1:'0',days:'',rate:'500'}]},
+  equip:[
+    {name:'バックホウ',spec:'0.7m³',qty:'1',days:'',rate:'28000',move:'60000'},
+    {name:'発電機',spec:'300kVA',qty:'1',days:'',rate:'25000',move:'0'}],
+  labor:[
+    {name:'世話役',note:'現場管理',qty:'1',days:'',rate:'32000'},
+    {name:'オペレーター',note:'ケーシング機・クレーン',qty:'2',days:'',rate:'30000'},
+    {name:'とび工',note:'玉掛・合図',qty:'2',days:'',rate:'28000'},
+    {name:'普通作業員',note:'',qty:'2',days:'',rate:'22000'}],
+  mat:[
+    {name:'軽油',spec:'',qty:'3600',unit:'L',rate:'150',loss:'0'},
+    {name:'流動化処理土',spec:'埋戻し',qty:'80',unit:'m³',rate:'14000',loss:'5'},
+    {name:'消耗品（ビット等）',spec:'',qty:'1',unit:'式',rate:'350000',loss:'0'}],
+  profit:{overhead:'8',mode:'markup',rate:'15',round:'1000',tax:'10'}});
+const blank=()=>({sample:false,step:'site',site:{name:'',address:'',start:'',date:today()},
+  client:{company:'',dept:'',person:'',tel:'',email:'',note:''},
+  qty:[{dia:'1500',count:'',depth:'',per:String(stdPer('1500'))}],sched:{setup:'0',demob:'0',spare:'0'},
+  main:{firstLen:'3',rot:[{model:'RT-200',qty:'1',days:'',rate:'',move:''}],crane:[{model:'BM1000',qty:'1',days:'',rate:'',move:''}],
+    grab:[{dia:'1500',qty:'1',days:'',rate:''}],casing:[{dia:'1500',first:'1',l6:'',l3:'',l2:'',l1:'',days:'',rate:''}]},
+  equip:[{}],labor:[{}],mat:[{}],profit:{overhead:'0',mode:'markup',rate:'15',round:'1000',tax:'10'}});
+
+let S; try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!S.site||!S.main)S=sample();
+function genNo(){const d=(S.site.date||today()).replace(/-/g,'');return 'ZJ-'+d+'-01'}
+if(!S.site.no)S.site.no=genNo();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+
+function schedule(){
+  const rows=S.qty.map(r=>{const c=num(r.count),p=num(r.per);return {...r,c,p,d:p>0?c/p:0}});
+  const places=rows.reduce((a,r)=>a+r.c,0);
+  const raw=rows.reduce((a,r)=>a+r.d,0);
+  const spare=Math.ceil(raw*num(S.sched.spare)/100);
+  const work=Math.ceil(raw)+spare;
+  const total=work+num(S.sched.setup)+num(S.sched.demob);
+  return {rows,places,raw,spare,work,total};
+}
+function calc(){
+  const sc=schedule();
+  const e=S.equip.reduce((a,r)=>a+amount.equip(r),0)+mainTotal();
+  const l=S.labor.reduce((a,r)=>a+amount.labor(r),0);
+  const m=S.mat.reduce((a,r)=>a+amount.mat(r),0);
+  const man=S.labor.reduce((a,r)=>a+num(r.qty)*dayOf(r),0);
+  const direct=e+l+m, oh=direct*num(S.profit.overhead)/100, cost=direct+oh;
+  const rate=num(S.profit.rate)/100;
+  let price=S.profit.mode==='margin'?(rate<1?cost/(1-rate):cost):cost*(1+rate);
+  const unit=num(S.profit.round); if(unit>0)price=Math.floor(price/unit)*unit;
+  const profit=price-cost, tax=price*num(S.profit.tax)/100;
+  return {sc,e,l,m,man,direct,oh,cost,price,profit,tax,total:price+tax,margin:price?profit/price:0};
+}
+function stepAmt(id,c){return {site:S.client.company||'未入力',qty:c.sc.total+' 日',equip:yen(c.e),labor:yen(c.l),mat:yen(c.m),profit:yen(c.profit),print:'印刷用'}[id]}
+function renderSteps(c){
+  $('steps').innerHTML=STEPS.map(s=>`<button role="tab" aria-selected="${S.step===s.id}" data-step="${s.id}" style="--sc:${s.color}">
+  <span class="no">STEP ${s.no}</span><span class="nm">${s.name}</span><span class="amt" data-amt="${s.id}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${esc(stepAmt(s.id,c))}</span></button>`).join('');
+}
+const navRow=st=>{const i=STEPS.findIndex(s=>s.id===st);return `<div class="row-actions">${i>0?`<button data-go="${STEPS[i-1].id}">← ${STEPS[i-1].name}</button>`:'<span></span>'}${i<STEPS.length-1?`<button class="primary" data-go="${STEPS[i+1].id}">次へ：${STEPS[i+1].name} →</button>`:''}</div>`};
+const fld=(grp,k,label,type='text',cls='')=>`<label class="f ${cls}">${label}<input id="${grp}_${k}" data-g="${grp}" data-k="${k}" type="${type}" value="${esc(S[grp][k])}"></label>`;
+const sampleChip=()=>S.sample?'<span class="chip">サンプル値</span>':'';
+
+function renderSheet(){
+  const st=S.step, sh=$('sheet');
+  if(st==='site'){
+    sh.innerHTML=`<h2>現場情報${sampleChip()}</h2>
+    <div class="form">${fld('site','no','管理番号')}<span></span>${fld('site','name','現場名称（工事名）','text','wide')}${fld('site','address','現場住所','text','wide')}${fld('site','start','着工予定日','date')}${fld('site','date','見積日','date')}</div>
+    <h2>お客様情報</h2>
+    <div class="custbar" id="custBar" ${DB?'':'hidden'}>
+      <label class="f" style="flex:1 1 260px">顧客リストから選ぶ<select id="custPick" aria-label="顧客リストから選ぶ">${custOptions()}</select></label>
+      <button id="custSaveCur">${S.client.custId&&CUST.some(c=>c.id===S.client.custId)?'顧客リストを更新':'顧客リストに登録'}</button>
+    </div>
+    <div class="form">${fld('client','company','会社名')}${fld('client','dept','部署')}${fld('client','person','ご担当者')}${fld('client','tel','電話番号','tel')}${fld('client','email','メール','email')}${fld('client','note','備考','text','wide')}</div>
+    ${navRow(st)}`;
+  }else if(st==='qty'){renderQty();return}
+  else if(st==='profit'){renderProfit();return}
+  else if(st==='print'){renderPrint();return}
+  else{
+    const cols=COLS[st], rows=S[st], auto=schedule().total;
+    const titles={equip:['機材費','台数 × 日数 × 日額単価 ＋ 回送費'],labor:['労務費（人工）','人数 × 日数 × 人工単価'],mat:['材料費','数量 ×（1＋ロス率）× 単価']};
+    const other=st==='equip'?'<h2 style="margin-top:6px">その他機材<span>バックホウ・発電機など（台数 × 日数 × 日額単価 ＋ 回送費）</span></h2>':'';
+    sh.innerHTML=`${st==='equip'?mainHtml(auto):''}${other}${st==='equip'?'':`<h2>${titles[st][0]}<span>${titles[st][1]}</span>${sampleChip()}</h2>`}
+    ${st==='labor'?`<p class="hint" style="margin:0">日数を空欄にすると、STEP 02 の全体工期 <b>${auto} 日</b> が自動で入ります。機材ごとに日数が違う場合だけ数字を入力してください。</p>`:''}
+    <div class="tbl"><table><thead><tr>${cols.map(c=>`<th style="${c.w?'width:'+c.w:''}${c.n?';text-align:right':''}">${c.t}</th>`).join('')}<th style="text-align:right">金額</th><th></th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr data-i="${i}">${cols.map(c=>`<td class="${c.n?'num':''}"><input id="${st}-${i}-${c.k}" data-k="${c.k}" value="${esc(r[c.k])}" ${c.n?'inputmode="decimal"':''} ${c.auto?`placeholder="自動 ${auto}" data-auto="1"`:''} aria-label="${c.t}"></td>`).join('')}
+    <td class="out" data-out="${i}"></td><td><button class="ghost" data-del="${i}" aria-label="行を削除">×</button></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="${cols.length}" style="text-align:right">${st==='labor'?'<span class="hint" id="manTotal"></span>　':''}小計</td><td class="out" id="stepTotal"></td><td></td></tr></tfoot></table></div>
+    <div class="row-actions"><button id="addRow">＋ 行を追加</button></div>${navRow(st)}`;
+  }
+  updateNumbers();
+}
+function mainHtml(auto){
+  const M=S.main, md=maxDia();
+  const sel=(sec,i,k,opts,v)=>`<select id="m-${sec}-${i}-${k}" data-m="${sec}" data-k="${k}">${opts.map(o=>{const [val,lab]=Array.isArray(o)?o:[o,o];return `<option value="${val}" ${String(v)===String(val)?'selected':''}>${lab}</option>`}).join('')}</select>`;
+  const inp=(sec,i,k,v,ph='')=>`<td class="num"><input id="m-${sec}-${i}-${k}" data-m="${sec}" data-k="${k}" value="${esc(v)}" inputmode="decimal" ${ph?`placeholder="${ph}"`:''}></td>`;
+  const dayPh='自動 '+auto;
+  const diaOpts=DIAS.map(([d])=>[d,'φ'+Number(d).toLocaleString('ja-JP')]);
+  const tail=(sec,i)=>`<td class="out" data-mo="${sec}-${i}"></td><td><button class="ghost" data-mdel="${sec}-${i}" aria-label="行を削除">×</button></td>`;
+  const tbl=(sec,head,body,min=620)=>`<div class="tbl"><table style="min-width:${min}px"><thead><tr>${head.map(h=>`<th style="${h[1]?'text-align:right':''}">${h[0]}</th>`).join('')}<th style="text-align:right">金額</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`;
+  const rot=M.rot.map((r,i)=>{const cap=capOf(r.model),ng=md&&cap<md;return `<tr data-i="${i}"><td>${sel('rot',i,'model',ROTS.map(x=>x[0]),r.model)}</td><td class="out" style="font-weight:400">${ng?`<span class="chip warn">φ${md.toLocaleString('ja-JP')}に非対応</span>`:'〜φ'+cap.toLocaleString('ja-JP')}</td>${inp('rot',i,'qty',r.qty)}${inp('rot',i,'days',r.days,dayPh)}${inp('rot',i,'rate',r.rate)}${inp('rot',i,'move',r.move)}${tail('rot',i)}</tr>`}).join('');
+  const crane=M.crane.map((r,i)=>`<tr data-i="${i}"><td>${sel('crane',i,'model',CRANES,r.model)}</td>${inp('crane',i,'qty',r.qty)}${inp('crane',i,'days',r.days,dayPh)}${inp('crane',i,'rate',r.rate)}${inp('crane',i,'move',r.move)}${tail('crane',i)}</tr>`).join('');
+  const grab=M.grab.map((r,i)=>`<tr data-i="${i}"><td>${sel('grab',i,'dia',diaOpts,r.dia)}</td>${inp('grab',i,'qty',r.qty)}${inp('grab',i,'days',r.days,dayPh)}${inp('grab',i,'rate',r.rate)}${tail('grab',i)}</tr>`).join('');
+  const cas=M.casing.map((r,i)=>`<tr data-i="${i}"><td>${sel('casing',i,'dia',diaOpts,r.dia)}</td>${LENS.map(([k])=>inp('casing',i,k,r[k])).join('')}<td class="out" data-ml="${i}"></td>${inp('casing',i,'days',r.days,dayPh)}${inp('casing',i,'rate',r.rate)}<td class="out" data-mo="casing-${i}"></td><td style="white-space:nowrap"><button data-autocase="${i}" title="STEP 02の深さから構成を自動作成">自動</button><button class="ghost" data-mdel="casing-${i}" aria-label="行を削除">×</button></td></tr>`).join('');
+  return `<h2>機材費<span>日数を空欄にすると全体工期 ${auto} 日が入ります</span>${sampleChip()}</h2>
+  <h3 class="mh">全旋回機（日本車輌）</h3>${tbl('rot',[['機種'],['対応径',1],['台数',1],['日数',1],['日額単価',1],['回送費',1]],rot)}
+  <div class="row-actions"><button data-madd="rot">＋ 全旋回機を追加</button></div>
+  <h3 class="mh">クレーン</h3>${tbl('crane',[['機種'],['台数',1],['日数',1],['日額単価',1],['回送費',1]],crane)}
+  <div class="row-actions"><button data-madd="crane">＋ クレーンを追加</button></div>
+  <h3 class="mh">ハンマーグラブ</h3>${tbl('grab',[['径'],['数量',1],['日数',1],['日額単価',1]],grab)}
+  <div class="row-actions"><button data-madd="grab">＋ ハンマーグラブを追加</button></div>
+  <h3 class="mh">ケーシング<span class="hint" style="font-weight:400">本数を入力（総延長 ÷ 必要長）</span></h3>
+  ${tbl('casing',[['径'],['ファースト',1],['6m',1],['3m',1],['2m',1],['1m',1],['総延長 / 必要長',1],['日数',1],['単価<br>(円/m・日)',1]],cas,900).replace('<th style="text-align:right">金額</th><th></th>','<th style="text-align:right">金額</th><th></th>')}
+  <div class="row-actions"><button data-madd="casing">＋ ケーシングを追加</button><label class="inline hint">ファースト1本の長さ<input id="m_firstLen" data-fl="1" class="num" style="max-width:70px" value="${esc(M.firstLen)}" inputmode="decimal">m</label></div>
+  <div class="row-actions"><span class="hint">主要機材 小計</span><b class="out" id="mainTotal" style="font-family:var(--f-num)"></b></div>`;
+}
+function renderPrint(){
+  const c=calc(), M=S.main, y=v=>Math.round(v||0).toLocaleString('ja-JP');
+  const T=(head,rows,right)=>`<table class="pt"><thead><tr>${head.map((h,i)=>`<th class="${right.includes(i)?'r':''}">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td class="${right.includes(i)?'r':''}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const equipRows=[
+    ...M.rot.map(r=>['全旋回機',r.model,r.qty,dayOf(r),y(r.rate),y(r.move),y(mainAmt.rot(r))]),
+    ...M.crane.map(r=>['クレーン',r.model,r.qty,dayOf(r),y(r.rate),y(r.move),y(mainAmt.crane(r))]),
+    ...M.grab.map(r=>['ハンマーグラブ','φ'+y(r.dia),r.qty,dayOf(r),y(r.rate),'',y(mainAmt.grab(r))]),
+    ...S.equip.filter(r=>r.name).map(r=>[r.name,r.spec||'',r.qty,dayOf(r),y(r.rate),y(r.move),y(amount.equip(r))])];
+  const casRows=M.casing.map(r=>['φ'+y(r.dia),num(r.first),num(r.l6),num(r.l3),num(r.l2),num(r.l1),caseLen(r)+'m',needDepth(r.dia)?needDepth(r.dia)+'m':'—',dayOf(r),y(r.rate),y(mainAmt.casing(r))]);
+  $('sheet').innerHTML=`<div class="screen-only row-actions" style="background:var(--soft);border-radius:8px;padding:12px"><div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 300px"><b>PDFで保存</b><span class="hint">下の積算書を A4 縦の PDF にして保存します。紙に印刷する場合も、この PDF を開いて印刷してください。</span></div><button class="primary" id="btnPdf">PDFで保存</button></div>
+  <div class="screen-only row-actions"><span class="hint">ブラウザの「印刷」（Windows: Ctrl+P ／ Mac: ⌘+P）でも印刷できます。</span>${navRow('print').replace('<div class="row-actions">','').replace(/<\/div>$/,'')}</div>
+  <article class="paper">
+    <header class="ph"><div><div class="pt-title">積 算 書</div><div class="pt-sub">${esc(S.site.name)}</div></div>
+      <div class="pt-co">Zenova Japan<br><span>管理番号 ${esc(S.site.no)}<br>見積日 ${esc(S.site.date)}</span></div></header>
+    <div class="pgrid">
+      <div><b>お客様</b>${esc(S.client.company)} ${esc(S.client.dept)}<br>${S.client.person?esc(S.client.person)+' 様':''}${S.client.tel?'　TEL '+esc(S.client.tel):''}${S.client.email?'<br>'+esc(S.client.email):''}</div>
+      <div><b>現場</b>${esc(S.site.address)}<br>${S.site.start?'着工予定 '+esc(S.site.start):''}</div>
+    </div>
+    <div class="ptotal"><span>見積金額（税抜）</span><strong>¥${y(c.price)}</strong><span>消費税 ¥${y(c.tax)}　税込 ¥${y(c.total)}</span><span class="pday">1日当たり売値（税抜）<b>¥${c.sc.total?y(c.price/c.sc.total):'—'}</b><small>見積金額 ÷ 全体工期 ${c.sc.total}日</small></span></div>
+    <h4>1. 数量・工期</h4>
+    ${T(['ケーシング径','箇所数','深さ(m)','成果(箇所/日)','作業日数'],c.sc.rows.filter(r=>r.c).map(r=>['φ'+y(r.dia),r.c,r.depth||'',r.p,r.d.toFixed(1)]),[1,2,3,4])}
+    <p class="pnote">実作業 ${Math.ceil(c.sc.raw)}日 ＋ 予備 ${c.sc.spare}日 ＋ 準備 ${num(S.sched.setup)}日 ＋ 撤去 ${num(S.sched.demob)}日 ＝ <b>全体工期 ${c.sc.total}日</b>（施工 ${c.sc.places}箇所）</p>
+    <h4>工程表</h4>
+    ${ganttHtml(c)}
+    <h4>2. 機材費　<span>¥${y(c.e)}</span></h4>
+    ${T(['区分','機種・規格','台数','日数','日額単価','回送費','金額'],equipRows,[2,3,4,5,6])}
+    <p class="pnote">ケーシング構成（本数）・ファースト1本 ${num(M.firstLen)}m</p>
+    ${T(['径','ファースト','6m','3m','2m','1m','総延長','必要長','日数','円/m・日','金額'],casRows,[1,2,3,4,5,6,7,8,9,10])}
+    <h4>3. 労務費（人工）　<span>¥${y(c.l)}　延べ ${c.man}人工</span></h4>
+    ${T(['職種','内容','人数','日数','人工単価','金額'],S.labor.filter(r=>r.name).map(r=>[r.name,r.note||'',r.qty,dayOf(r),y(r.rate),y(amount.labor(r))]),[2,3,4,5])}
+    <h4>4. 材料費　<span>¥${y(c.m)}</span></h4>
+    ${T(['品名','規格','数量','単位','単価','ロス%','金額'],S.mat.filter(r=>r.name).map(r=>[r.name,r.spec||'',r.qty,r.unit||'',y(r.rate),num(r.loss),y(amount.mat(r))]),[2,4,5,6])}
+    <h4>5. 集計</h4>
+    ${T(['項目','金額'],[['機材費','¥'+y(c.e)],['労務費','¥'+y(c.l)],['材料費','¥'+y(c.m)],['直接工事費','¥'+y(c.direct)],['諸経費（'+num(S.profit.overhead)+'%）','¥'+y(c.oh)],['工事原価','¥'+y(c.cost)],['利益（粗利率 '+(c.margin*100).toFixed(1)+'%）','¥'+y(c.profit)],['見積金額（税抜）','¥'+y(c.price)],['消費税（'+num(S.profit.tax)+'%）','¥'+y(c.tax)],['税込合計','¥'+y(c.total)],['1日当たり売値（税抜・'+c.sc.total+'日）',c.sc.total?'¥'+y(c.price/c.sc.total):'—'],['1日当たり原価（'+c.sc.total+'日）',c.sc.total?'¥'+y(c.cost/c.sc.total):'—']],[1])}
+    <div class="pstamp"><div>作成</div><div>確認</div><div>承認</div></div>
+  </article>`;
+  renderSum(c); save();
+}
+function ganttHtml(c){
+  const total=c.sc.total; if(!total)return '<p class="pnote">工期が 0 日です。STEP 02 を入力してください。</p>';
+  const segs=[]; let t=0;
+  const add=(name,len,cls)=>{if(len>0){segs.push({name,s:t,e:t+len,len,cls});t+=len}};
+  add('準備・据付',num(S.sched.setup),'g-prep');
+  const work=c.sc.rows.filter(r=>r.c>0&&r.d>0); const scale=work.length?Math.ceil(c.sc.raw)/c.sc.raw:1;
+  work.forEach(r=>add('φ'+Number(r.dia).toLocaleString('ja-JP')+' 施工 '+r.c+'箇所',r.d*scale,'g-work'));
+  add('予備日',c.sc.spare,'g-spare');
+  add('撤去・片付け',num(S.sched.demob),'g-prep');
+  const st=S.site.start?new Date(S.site.start+'T00:00:00'):null, W='日月火水木金土';
+  const days=[...Array(total)].map((_,i)=>{if(!st)return {n:i+1};const d=new Date(st);d.setDate(d.getDate()+i);return {n:i+1,md:(d.getMonth()+1)+'/'+d.getDate(),w:W[d.getDay()],wd:d.getDay()}});
+  const every=total>40?5:total>20?2:1, lab=i=>(i===0||(i+1)%every===0);
+  const head=`<tr><th class="gl">工種</th><th class="gd">日数</th>${days.map((d,i)=>`<th class="${d.wd===0?'sun':d.wd===6?'sat':''}">${lab(i)?(st?d.md:d.n):''}</th>`).join('')}</tr>`+
+    (st?`<tr><th class="gl"></th><th class="gd"></th>${days.map(d=>`<th class="${d.wd===0?'sun':d.wd===6?'sat':''}">${total<=31?d.w:''}</th>`).join('')}</tr>`:'');
+  const body=segs.map(g=>`<tr><td class="gl">${esc(g.name)}</td><td class="gd">${Math.round(g.len*10)/10}</td>${days.map((d,i)=>`<td class="${d.wd===0?'sun':d.wd===6?'sat':''}">${(i<g.e-1e-9&&i+1>g.s+1e-9)?`<i class="${g.cls}"></i>`:''}</td>`).join('')}</tr>`).join('');
+  return `<div class="gwrap"><table class="gantt"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+  <p class="pnote">${st?'着工 '+esc(S.site.start)+' から暦日で表示（休工日は含めていません）':'着工予定日を入れると日付で表示されます'}　全体工期 ${total}日</p>`;
+}
+function autoCase(i){
+  const r=S.main.casing[i], d=needDepth(r.dia), fl=num(S.main.firstLen);
+  if(!d){toast('STEP 02 に φ'+r.dia+' の深さが入っていません');return}
+  let rem=Math.max(0,d-fl); const o={first:1,l6:0,l3:0,l2:0,l1:0};
+  o.l6=Math.floor(rem/6); rem-=o.l6*6;
+  if(rem>=3){o.l3=1;rem-=3} if(rem>1){o.l2=1;rem=Math.max(0,rem-2)} if(rem>0){o.l1=1}
+  Object.entries(o).forEach(([k,v])=>r[k]=String(v)); S.sample=false; renderSheet();
+  toast('φ'+r.dia+'：必要長 '+d+'m に合わせて構成しました');
+}
+function renderQty(){
+  $('sheet').innerHTML=`<h2>数量・作業日数<span>ケーシング径 × 箇所数 ÷ 1日当たり成果 ＝ 作業日数</span>${sampleChip()}</h2>
+  <div class="tbl"><table style="min-width:600px"><thead><tr><th style="width:22%">ケーシング径</th><th style="text-align:right">箇所数</th><th style="text-align:right">深さ (m)</th><th style="text-align:right">1日当たり成果<br>（箇所/日）</th><th style="text-align:right">作業日数</th><th></th></tr></thead>
+  <tbody>${S.qty.map((r,i)=>`<tr data-i="${i}">
+    <td><select id="qty-${i}-dia" data-q="dia" aria-label="ケーシング径">${DIAS.map(([d])=>`<option value="${d}" ${String(r.dia)===d?'selected':''}>φ${Number(d).toLocaleString('ja-JP')}</option>`).join('')}</select></td>
+    <td class="num"><input id="qty-${i}-count" data-q="count" value="${esc(r.count)}" inputmode="decimal" aria-label="箇所数"></td>
+    <td class="num"><input id="qty-${i}-depth" data-q="depth" value="${esc(r.depth)}" inputmode="decimal" aria-label="深さ"></td>
+    <td class="num"><input id="qty-${i}-per" data-q="per" value="${esc(r.per)}" inputmode="decimal" aria-label="1日当たり成果"></td>
+    <td class="out" data-qd="${i}"></td><td><button class="ghost" data-qdel="${i}" aria-label="行を削除">×</button></td></tr>`).join('')}</tbody>
+  <tfoot><tr><td style="text-align:right">合計</td><td class="out" id="qPlaces"></td><td></td><td></td><td class="out" id="qRaw"></td><td></td></tr></tfoot></table></div>
+  <div class="row-actions"><button id="addQty">＋ 径を追加</button><span class="hint">径を選ぶと標準の成果が入ります（仮の値・変更可）</span></div>
+  <div class="form">
+    <label class="f">準備・据付（日）<input id="sc_setup" class="num" data-s="setup" value="${esc(S.sched.setup)}" inputmode="decimal"></label>
+    <label class="f">撤去・片付け（日）<input id="sc_demob" class="num" data-s="demob" value="${esc(S.sched.demob)}" inputmode="decimal"></label>
+    <label class="f">予備日（作業日数の %）<input id="sc_spare" class="num" data-s="spare" value="${esc(S.sched.spare)}" inputmode="decimal"></label>
+  </div>
+  <div class="daysum" id="daysum"></div>
+  <div id="qGantt"></div>
+  ${navRow('qty')}`;
+  updateNumbers();
+}
+function renderProfit(){
+  const p=S.profit;
+  $('sheet').innerHTML=`<h2>利益・諸経費<span>直接工事費に諸経費を加えた原価に利益を乗せます</span></h2>
+  <div class="profit-grid">
+    <div class="box"><h3>諸経費率</h3><div class="inline"><input class="num" id="p_overhead" data-p="overhead" value="${esc(p.overhead)}" inputmode="decimal" aria-label="諸経費率"><span>%（直接工事費に対して）</span></div><span class="hint">現場管理費・一般管理費など。不要なら 0。</span></div>
+    <div class="box"><h3>利益の計算方法</h3>
+      <div class="seg" role="group" aria-label="利益の計算方法"><button data-mode="markup" aria-pressed="${p.mode==='markup'}">原価に上乗せ</button><button data-mode="margin" aria-pressed="${p.mode==='margin'}">売価に対する利益率</button></div>
+      <div class="inline"><input class="num" id="p_rate" data-p="rate" value="${esc(p.rate)}" inputmode="decimal" aria-label="利益率"><span>%</span></div><span class="hint" id="modeHint"></span></div>
+    <div class="box"><h3>端数処理・消費税</h3>
+      <label class="f">見積金額の端数切捨て<select id="p_round" data-p="round">${[['0','しない'],['100','百円未満'],['1000','千円未満'],['10000','万円未満']].map(([v,t])=>`<option value="${v}" ${p.round===v?'selected':''}>${t}</option>`).join('')}</select></label>
+      <div class="inline"><span class="hint">消費税</span><input class="num" id="p_tax" data-p="tax" value="${esc(p.tax)}" inputmode="decimal" aria-label="消費税率"><span>%</span></div></div>
+  </div>
+  <div class="row-actions"><span class="hint">右のサマリーが見積金額です。「見積サマリーをコピー」で貼り付けに使えます。</span></div>${navRow('profit')}`;
+  updateNumbers();
+}
+function renderSum(c){
+  const parts=[['機材費',c.e,'var(--c1)'],['労務費',c.l,'var(--c2)'],['材料費',c.m,'var(--c3)']];
+  const base=c.price||1, seg=[...parts,['諸経費',c.oh,'var(--steel)'],['利益',Math.max(c.profit,0),'var(--c4)']];
+  $('sum').innerHTML=`<h2>見積サマリー</h2>
+  <div style="display:flex;flex-direction:column;gap:2px;font-size:16px"><b style="font-size:18px;text-wrap:balance">${esc(S.site.name)||'現場名 未入力'}</b><span class="hint">${esc(S.client.company)||'お客様 未入力'}${S.client.person?'　'+esc(S.client.person)+' 様':''}</span></div>
+  <div class="daysum"><div class="k"><small>施工箇所</small><b>${c.sc.places}</b></div><div class="k"><small>全体工期</small><b>${c.sc.total} 日</b></div></div>
+  <div class="bar" aria-hidden="true">${seg.map(s=>`<i style="width:${(s[1]/base*100).toFixed(2)}%;background:${s[2]}"></i>`).join('')}</div>
+  <div class="lines">
+    ${parts.map(p=>`<div class="ln"><span class="sw" style="background:${p[2]}"></span><span>${p[0]}</span><b>${yen(p[1])}</b></div>`).join('')}
+    <div class="ln sub"><span></span><span>直接工事費</span><b>${yen(c.direct)}</b></div>
+    <div class="ln"><span class="sw" style="background:var(--steel)"></span><span>諸経費 <span class="pct">${num(S.profit.overhead)}%</span></span><b>${yen(c.oh)}</b></div>
+    <div class="ln sub"><span></span><span>工事原価</span><b>${yen(c.cost)}</b></div>
+    <div class="ln"><span class="sw" style="background:var(--c4)"></span><span>利益 <span class="pct">粗利率 ${(c.margin*100).toFixed(1)}%</span></span><b>${yen(c.profit)}</b></div>
+  </div>
+  <div class="grand"><small>見積金額（税抜）</small><strong>${yen(c.price)}</strong><span class="tax">消費税 ${yen(c.tax)} ／ 税込 ${yen(c.total)}</span></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip">延べ ${c.man.toLocaleString('ja-JP')} 人工</span>
+  ${c.sc.places>0?`<span class="chip">1箇所あたり ${yen(c.price/c.sc.places)}</span>`:''}
+  ${c.price>0&&c.margin<0.05?'<span class="chip warn">粗利率 5% 未満</span>':''}</div>`;
+}
+function updateNumbers(){
+  const c=calc(), st=S.step;
+  STEPS.forEach(s=>{const el=document.querySelector(`[data-amt="${s.id}"]`);if(el)el.textContent=stepAmt(s.id,c)});
+  if(COLS[st]){
+    if(st==='equip'){
+      Object.keys(mainAmt).forEach(k=>S.main[k].forEach((r,i)=>{const o=document.querySelector(`[data-mo="${k}-${i}"]`);if(o)o.textContent=yen(mainAmt[k](r))}));
+      S.main.casing.forEach((r,i)=>{const o=document.querySelector(`[data-ml="${i}"]`);if(!o)return;const L=caseLen(r),N=needDepth(r.dia);
+        o.innerHTML=`${L}m / ${N?N+'m':'—'}${N&&L<N?' <span class="chip warn">不足</span>':''}`});
+      const mt=$('mainTotal'); if(mt)mt.textContent=yen(mainTotal());
+    }
+    S[st].forEach((r,i)=>{const o=document.querySelector(`[data-out="${i}"]`);if(o)o.textContent=yen(amount[st](r))});
+    $('stepTotal').textContent=yen({equip:c.e-mainTotal(),labor:c.l,mat:c.m}[st]);
+    const mt=$('manTotal'); if(mt)mt.textContent=`延べ ${c.man.toLocaleString('ja-JP')} 人工`;
+  }else if(st==='qty'){
+    c.sc.rows.forEach((r,i)=>{const o=document.querySelector(`[data-qd="${i}"]`);if(o)o.textContent=r.p>0?r.d.toFixed(1)+' 日':'成果を入力'});
+    $('qGantt').innerHTML='<h2 style="font-size:17px;margin:4px 0">工程表</h2>'+ganttHtml(c);
+    $('qPlaces').textContent=c.sc.places+' 箇所'; $('qRaw').textContent=c.sc.raw.toFixed(1)+' 日';
+    $('daysum').innerHTML=`<div class="k"><small>実作業（切上げ）</small><b>${Math.ceil(c.sc.raw)} 日</b></div><div class="k"><small>予備日</small><b>${c.sc.spare} 日</b></div><div class="k"><small>準備＋撤去</small><b>${num(S.sched.setup)+num(S.sched.demob)} 日</b></div><div class="k main"><small>全体工期 → 機材・人工の日数へ</small><b>${c.sc.total} 日</b></div>`;
+  }else if(st==='profit'){
+    $('modeHint').textContent=S.profit.mode==='margin'?'見積金額のうち何%を利益にするか（例：15% → 原価 ÷ 0.85）':'原価に何%を足すか（例：15% → 原価 × 1.15）';
+  }
+  renderSum(c); save();
+}
+function go(st){S.step=st;renderSteps(calc());renderSheet();save();window.scrollTo({top:0})}
+
+document.addEventListener('input',e=>{
+  const t=e.target, tr=t.closest('tr[data-i]');
+  if(t.dataset.m&&tr){S.main[t.dataset.m][+tr.dataset.i][t.dataset.k]=t.value;S.sample=false;if(t.tagName==='SELECT'){renderSheet();return}}
+  else if(t.dataset.fl){S.main.firstLen=t.value}
+  else if(t.dataset.g){S[t.dataset.g][t.dataset.k]=t.value;S.sample=false}
+  else if(t.dataset.q&&tr){const r=S.qty[+tr.dataset.i];r[t.dataset.q]=t.value;if(t.dataset.q==='dia'){r.per=String(stdPer(t.value));const pe=$(`qty-${tr.dataset.i}-per`);if(pe)pe.value=r.per}S.sample=false}
+  else if(t.dataset.s){S.sched[t.dataset.s]=t.value}
+  else if(tr&&t.dataset.k){S[S.step][+tr.dataset.i][t.dataset.k]=t.value;S.sample=false}
+  else if(t.dataset.p){S.profit[t.dataset.p]=t.value}
+  else return;
+  updateNumbers();
+});
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  if(b.dataset.step){go(b.dataset.step);return}
+  if(b.dataset.go){go(b.dataset.go);return}
+  if(b.dataset.del!==undefined){S[S.step].splice(+b.dataset.del,1);if(!S[S.step].length)S[S.step].push({});renderSheet();return}
+  if(b.dataset.qdel!==undefined){S.qty.splice(+b.dataset.qdel,1);if(!S.qty.length)S.qty.push({dia:'1500',count:'',depth:'',per:'1'});renderQty();return}
+  if(b.dataset.madd){const sec=b.dataset.madd;const d={rot:{model:'RT-200',qty:'1'},crane:{model:'BM1000',qty:'1'},grab:{dia:'1500',qty:'1'},casing:{dia:'1500',first:'1'}}[sec];S.main[sec].push({...d});renderSheet();return}
+  if(b.dataset.mdel){const [sec,i]=b.dataset.mdel.split('-');S.main[sec].splice(+i,1);renderSheet();return}
+  if(b.dataset.autocase!==undefined){autoCase(+b.dataset.autocase);return}
+  if(b.dataset.mode){S.profit.mode=b.dataset.mode;renderProfit();return}
+  if(b.id==='addRow'){S[S.step].push({});renderSheet();const f=$(`${S.step}-${S[S.step].length-1}-name`);if(f)f.focus();return}
+  if(b.id==='addQty'){S.qty.push({dia:'1500',count:'',depth:'',per:String(stdPer('1500'))});renderQty();return}
+  if(b.id==='btnReset'){$('resetWrap').innerHTML='<span class="confirm">全項目を消去しますか？ <button id="resetYes" class="primary">消去する</button><button id="resetNo">やめる</button></span>';return}
+  if(b.id==='resetYes'){S=blank();S.site.no=genNo();go('site');resetBtn();toast('新しい積算を開始しました');return}
+  if(b.id==='resetNo'){resetBtn();return}
+  if(b.id==='btnCopy'){copy(tsv(),'表形式（Excelに貼り付け可）でコピーしました');return}
+  if(b.id==='btnText'){copy(summaryText(),'見積サマリーをコピーしました');return}
+});
+function resetBtn(){$('resetWrap').innerHTML='<button class="ghost" id="btnReset">新規（全消去）</button>'}
+function tsv(){
+  const c=calc(),L=[];
+  L.push(['現場名称',S.site.name],['現場住所',S.site.address],['見積日',S.site.date],['お客様',S.client.company],['ご担当者',S.client.person],['電話',S.client.tel],['メール',S.client.email],[]);
+  L.push(['数量・日数']);L.push(['ケーシング径','箇所数','深さ(m)','成果(箇所/日)','作業日数']);
+  c.sc.rows.filter(r=>r.c).forEach(r=>L.push(['φ'+r.dia,r.c,r.depth||'',r.p,r.d.toFixed(1)]));
+  L.push(['準備・据付',S.sched.setup],['撤去',S.sched.demob],['予備日',c.sc.spare],['全体工期',c.sc.total],[]);
+  const sec=(t,st,h,f)=>{L.push([t]);L.push([...h,'金額']);S[st].filter(r=>r.name).forEach(r=>L.push([...f(r),Math.round(amount[st](r))]));L.push([]);};
+  L.push(['主要機材']);L.push(['区分','機種/径','台数・数量','日数','単価','回送費','金額']);
+  S.main.rot.forEach(r=>L.push(['全旋回',r.model,r.qty,dayOf(r),r.rate,r.move||0,Math.round(mainAmt.rot(r))]));
+  S.main.crane.forEach(r=>L.push(['クレーン',r.model,r.qty,dayOf(r),r.rate,r.move||0,Math.round(mainAmt.crane(r))]));
+  S.main.grab.forEach(r=>L.push(['ハンマーグラブ','φ'+r.dia,r.qty,dayOf(r),r.rate,'',Math.round(mainAmt.grab(r))]));
+  S.main.casing.forEach(r=>L.push(['ケーシング','φ'+r.dia+'（ファースト'+num(r.first)+'・6m'+num(r.l6)+'・3m'+num(r.l3)+'・2m'+num(r.l2)+'・1m'+num(r.l1)+'＝'+caseLen(r)+'m）','',dayOf(r),r.rate+'円/m日','',Math.round(mainAmt.casing(r))]));
+  L.push([]);
+  sec('その他機材','equip',['機材名','規格','台数','日数','日額単価','回送費'],r=>[r.name,r.spec||'',r.qty,dayOf(r),r.rate,r.move||0]);
+  sec('人工','labor',['職種','内容','人数','日数','人工単価'],r=>[r.name,r.note||'',r.qty,dayOf(r),r.rate]);
+  sec('材料','mat',['品名','規格','数量','単位','単価','ロス%'],r=>[r.name,r.spec||'',r.qty,r.unit||'',r.rate,r.loss||0]);
+  [['機材費',c.e],['労務費',c.l],['材料費',c.m],['直接工事費',c.direct],['諸経費',c.oh],['工事原価',c.cost],['利益',c.profit],['見積金額(税抜)',c.price],['消費税',c.tax],['税込合計',c.total]].forEach(([a,v])=>L.push([a,Math.round(v)]));
+  return L.map(r=>r.join('\t')).join('\n');
+}
+function summaryText(){
+  const c=calc();
+  return `【御見積】${S.site.name||''}
+${S.client.company||''}${S.client.person?'　'+S.client.person+' 様':''}
+現場：${S.site.address||''}　見積日：${S.site.date||''}
+施工：${c.sc.rows.filter(r=>r.c).map(r=>'φ'+r.dia+'×'+r.c+'箇所').join('、')}（全体工期 ${c.sc.total}日）
+使用機材：全旋回 ${S.main.rot.map(r=>r.model).join('・')}／クレーン ${S.main.crane.map(r=>r.model).join('・')}
+────────────
+機材費　　　${yen(c.e)}
+労務費　　　${yen(c.l)}（延べ${c.man}人工）
+材料費　　　${yen(c.m)}
+諸経費　　　${yen(c.oh)}
+────────────
+見積金額（税抜）${yen(c.price)}
+消費税　　　${yen(c.tax)}
+税込合計　　${yen(c.total)}
+（粗利 ${yen(c.profit)}／粗利率 ${(c.margin*100).toFixed(1)}%）`;
+}
+function copy(text,msg){
+  const show=()=>{$('exportSec').hidden=false;$('exportBox').value=text;$('exportBox').select();toast('下の欄から選択してコピーしてください')};
+  try{navigator.clipboard.writeText(text).then(()=>toast(msg),show)}catch(e){show()}
+}
+let tt;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2200)}
+/* ===== 見積の保存（共有DB） ===== */
+let DB=null, LIST=[], listLoaded=false, CUST=[], custLoaded=false, custEdit=null;
+const CF=[['company','会社名'],['dept','部署'],['person','ご担当者'],['tel','電話番号'],['email','メール'],['address','住所'],['note','備考']];
+function custOptions(){
+  const cur=S.client.custId;
+  return '<option value="">― 選択してください ―</option>'+CUST.map(c=>`<option value="${esc(c.id)}" ${c.id===cur?'selected':''}>${esc(c.company)}${c.person?'（'+esc(c.person)+'）':''}</option>`).join('');
+}
+function refreshPick(){
+  const el=$('custPick'); if(el)el.innerHTML=custOptions();
+  const b=$('custSaveCur'); if(b)b.textContent=S.client.custId&&CUST.some(c=>c.id===S.client.custId)?'顧客リストを更新':'顧客リストに登録';
+}
+function custCount(c){return LIST.filter(r=>(r.state&&r.state.client&&r.state.client.custId===c.id)||(c.company&&r.client===c.company)).length}
+function renderCust(){
+  const body=$('custBody'); if(!body)return;
+  const q=($('custQ').value||'').trim().toLowerCase();
+  const rows=CUST.filter(c=>!q||CF.map(f=>c[f[0]]||'').join(' ').toLowerCase().includes(q));
+  if(!CUST.length){body.innerHTML='<p class="hint">登録された顧客はまだありません。「＋ 顧客を登録」か、STEP 01 の「顧客リストに登録」で追加できます。</p>';return}
+  if(!rows.length){body.innerHTML='<p class="hint">該当する顧客がありません。</p>';return}
+  body.innerHTML='<div class="elist">'+rows.map(c=>{const n=custCount(c);return `<div class="erow ${c.id===S.client.custId?'cur':''}"><div class="t"><b>${esc(c.company||'（会社名なし）')}${c.dept?'　'+esc(c.dept):''}</b>
+  <span>${c.person?esc(c.person)+' 様　':''}${c.tel?'TEL '+esc(c.tel)+'　':''}${c.email?esc(c.email)+'　':''}・　見積 ${n}件</span>${c.address||c.note?`<span>${esc(c.address||'')}${c.note?'　'+esc(c.note):''}</span>`:''}</div>
+  <div class="a" data-row="${esc(c.id)}"><button class="primary" data-cuse="${esc(c.id)}">この見積に使う</button>${n?`<button data-chist="${esc(c.company||'')}">見積を見る</button>`:''}<button data-cedit="${esc(c.id)}">編集</button><button class="ghost" data-cdelask="${esc(c.id)}">削除</button></div></div>`}).join('')+'</div>';
+}
+function openCustForm(c){
+  custEdit=c?c.id:'';const v=c||{};
+  const f=$('custForm');f.hidden=false;
+  f.innerHTML=`<div class="cform"><b class="wide">${c?'顧客を編集':'顧客を登録'}</b>${CF.map(([k,l])=>`<label class="f ${k==='address'||k==='note'?'wide':''}">${l}<input id="cf_${k}" value="${esc(v[k]||'')}" ${k==='tel'?'type="tel"':k==='email'?'type="email"':''}></label>`).join('')}
+  <div class="row-actions wide"><button id="cfCancel">やめる</button><button class="primary" id="cfSave">${c?'変更を保存':'登録する'}</button></div></div>`;
+  $('cf_company').focus();
+}
+async function writeCust(id,data){
+  const ref=id?DB.collection('customers').doc(id):DB.collection('customers').doc();
+  await ref.set({...data,updatedAt:new Date().toISOString()});
+  return ref.id||ref.path.split('/').pop();
+}
+const custErr=e=>({'permission-denied':'顧客リストを変更する権限がありません。','resource-exhausted':'登録できる件数の上限です。'}[e&&e.code]||'保存できませんでした。もう一度お試しください。');
+function useCust(id){
+  const c=CUST.find(x=>x.id===id);if(!c)return;
+  ['company','dept','person','tel','email','note'].forEach(k=>S.client[k]=c[k]||'');
+  S.client.custId=c.id;S.sample=false;save();
+  if(S.step==='site')renderSheet();else updateNumbers();
+  toast(c.company+' を入れました');
+}
+const safeId=no=>{const t=String(no||'').trim().replace(/[^A-Za-z0-9_\-.~:@+]/g,'_').replace(/^\.+$/,'_').slice(0,120);return t||('est_'+Date.now().toString(36))};
+/* ===== Firebase 設定 =====
+   Firebase コンソール → プロジェクトの設定 → マイアプリ（ウェブ）の値を貼り付けてください。
+   apiKey が空のままだと、保存機能なしのローカル版として動きます（入力内容はこのブラウザに残ります）。 */
+const FIREBASE_CONFIG={
+  apiKey:'AIzaSyBAEU_SzMQRuewgOPk5GSR-ykeViV-1mgw',
+  authDomain:'richie-form.firebaseapp.com',
+  projectId:'richie-form',
+  storageBucket:'richie-form.firebasestorage.app',
+  messagingSenderId:'803034730908',
+  appId:'1:803034730908:web:755ddc46d09683fd627859'
+};
+let UNSUB=[];
+function setDbUi(on){
+  ['btnSave','btnList','btnCust'].forEach(id=>$(id).hidden=!on);
+  const cb=$('custBar'); if(cb)cb.hidden=!on;
+  if(!on){$('listSec').hidden=true;$('custSec').hidden=true}
+}
+function stopListeners(){UNSUB.forEach(u=>{try{u()}catch(e){}});UNSUB=[];LIST=[];CUST=[];listLoaded=custLoaded=false}
+function startListeners(){
+  stopListeners();
+  const t2=setTimeout(()=>{if(!custLoaded)$('custBody').innerHTML='<p class="hint">顧客リストをまだ読み込めません。通信状況を確認してください。</p>'},10000);
+  UNSUB.push(DB.collection('customers').orderBy('company','asc').limit(1000).onSnapshot(snap=>{
+    clearTimeout(t2);custLoaded=true;CUST=snap.docs.map(d=>({id:d.id,...d.data()}));renderCust();refreshPick();
+  },err=>{clearTimeout(t2);$('custBody').innerHTML='<p class="hint">顧客リストを読み込めませんでした（'+esc(err.code||'')+'）。</p>'}));
+  const t=setTimeout(()=>{if(!listLoaded)$('listBody').innerHTML='<p class="hint">保存した見積をまだ読み込めません。通信状況を確認してください。</p>'},10000);
+  UNSUB.push(DB.collection('estimates').orderBy('updatedAt','desc').limit(500).onSnapshot(snap=>{
+    clearTimeout(t);listLoaded=true;LIST=snap.docs.map(d=>({id:d.id,...d.data()}));renderList();renderCust();
+  },err=>{clearTimeout(t);$('listBody').innerHTML='<p class="hint">保存した見積を読み込めませんでした（'+esc(err.code||'')+'）。</p>'}));
+}
+(()=>{
+  if(!window.firebase||!FIREBASE_CONFIG.apiKey)return;   // 未設定 → ローカル版
+  try{firebase.initializeApp(FIREBASE_CONFIG)}catch(e){console.error(e);return}
+  const fs=firebase.firestore();
+  try{fs.enablePersistence({synchronizeTabs:true}).catch(()=>{})}catch(e){}   // オフラインでも閲覧・入力可
+  DB=fs;setDbUi(true);startListeners();
+})();
+function renderList(){
+  const q=($('listQ').value||'').trim().toLowerCase();
+  const rows=LIST.filter(r=>!q||[r.no,r.siteName,r.client].join(' ').toLowerCase().includes(q));
+  if(!LIST.length){$('listBody').innerHTML='<p class="hint">保存した見積はまだありません。入力後、上の「見積を保存」を押すとここに並びます。</p>';return}
+  if(!rows.length){$('listBody').innerHTML='<p class="hint">該当する見積がありません。</p>';return}
+  $('listBody').innerHTML='<div class="elist">'+rows.map(r=>`<div class="erow ${r.id===S.docId?'cur':''}"><div class="t"><b>${esc(r.no)}　${esc(r.siteName||'（現場名なし）')}</b><span>${esc(r.client||'')}　・　<span class="p">${yen(r.price)}</span>　・　工期 ${num(r.days)}日　・　更新 ${esc(fmtDate(r.updatedAt))}</span></div>
+  <div class="a" data-row="${esc(r.id)}"><button data-open="${esc(r.id)}">開く</button><button data-dup="${esc(r.id)}">複製</button><button class="ghost" data-delask="${esc(r.id)}">削除</button></div></div>`).join('')+'</div>';
+}
+const fmtDate=iso=>{if(!iso)return '';const d=new Date(iso);return isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+function snapshotState(){const o=JSON.parse(JSON.stringify(S));delete o.docId;delete o.step;delete o.sample;return o}
+async function saveEstimate(force){
+  if(!DB)return;
+  if(!S.site.no){toast('STEP 01 で管理番号を入れてください');go('site');return}
+  const id=S.docId||safeId(S.site.no);
+  const clash=LIST.find(r=>r.id===id);
+  if(clash&&id!==S.docId&&!force){
+    $('saveWrap').hidden=false;$('saveWrap').innerHTML=`<span class="confirm">管理番号「${esc(S.site.no)}」の見積がすでにあります。上書きしますか？ <button class="primary" id="saveOver">上書き保存</button><button id="saveCancel">やめる</button></span>`;return}
+  const c=calc();
+  const btn=$('btnSave');btn.disabled=true;btn.textContent='保存中…';
+  try{
+    await DB.collection('estimates').doc(id).set({no:S.site.no,siteName:S.site.name||'',client:S.client.company||'',price:Math.round(c.price),days:c.sc.total,updatedAt:new Date().toISOString(),state:snapshotState()});
+    S.docId=id;save();toast('保存しました（'+S.site.no+'）');
+  }catch(e){
+    const m={'permission-denied':'保存する権限がありません。管理者に権限の付与を依頼してください。','resource-exhausted':'Firestore の利用上限に達しました。時間をおいてお試しください。'}[e&&e.code]||'保存できませんでした。時間をおいてもう一度お試しください。';
+    toast(m);
+  }finally{btn.disabled=false;btn.textContent='見積を保存';$('saveWrap').hidden=true}
+}
+function loadEstimate(id,dup){
+  const r=LIST.find(x=>x.id===id);if(!r||!r.state)return;
+  S={...blank(),...JSON.parse(JSON.stringify(r.state))};S.sample=false;
+  if(dup){S.docId=undefined;S.site.no=nextNo(S.site.no);S.site.date=today()}else S.docId=id;
+  $('listSec').hidden=true;go('site');toast(dup?'複製しました。管理番号を確認して保存してください':'「'+r.no+'」を開きました');
+}
+function nextNo(no){const m=String(no||'').match(/^(.*?)(\d+)$/);let cand=m?m[1]+String(+m[2]+1).padStart(m[2].length,'0'):(no||'ZJ')+'-2';
+  while(LIST.some(r=>r.no===cand)){const k=cand.match(/^(.*?)(\d+)$/);cand=k[1]+String(+k[2]+1).padStart(k[2].length,'0')}return cand}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.id==='btnSave'){saveEstimate(false);return}
+  if(b.id==='saveOver'){saveEstimate(true);return}
+  if(b.id==='saveCancel'){$('saveWrap').hidden=true;return}
+  if(b.id==='btnList'){$('listSec').hidden=!$('listSec').hidden;if(!$('listSec').hidden){renderList();$('listSec').scrollIntoView({block:'start'})}return}
+  if(b.id==='listClose'){$('listSec').hidden=true;return}
+  if(b.dataset.open){loadEstimate(b.dataset.open,false);return}
+  if(b.dataset.dup){loadEstimate(b.dataset.dup,true);return}
+  if(b.dataset.delask){const w=b.closest('[data-row]');w.innerHTML=`<span class="confirm">削除しますか？ <button class="primary" data-delyes="${esc(b.dataset.delask)}">削除する</button><button id="delNo">やめる</button></span>`;return}
+  if(b.id==='delNo'){renderList();return}
+  if(b.dataset.delyes){try{await DB.collection('estimates').doc(b.dataset.delyes).delete();if(S.docId===b.dataset.delyes){S.docId=undefined;save()}toast('削除しました')}catch(err){toast('削除できませんでした');renderList()}return}
+  if(b.id==='btnPdf'){makePdf(b);return}
+  if(b.id==='btnCust'){$('custSec').hidden=!$('custSec').hidden;if(!$('custSec').hidden){renderCust();$('custSec').scrollIntoView({block:'start'})}return}
+  if(b.id==='custClose'){$('custSec').hidden=true;$('custForm').hidden=true;return}
+  if(b.id==='custNew'){openCustForm(null);return}
+  if(b.dataset.cedit){openCustForm(CUST.find(c=>c.id===b.dataset.cedit));return}
+  if(b.id==='cfCancel'){$('custForm').hidden=true;return}
+  if(b.id==='cfSave'){
+    const d={};CF.forEach(([k])=>d[k]=$('cf_'+k).value.trim());
+    if(!d.company){toast('会社名を入れてください');$('cf_company').focus();return}
+    if(!custEdit&&CUST.some(c=>c.company===d.company&&(c.person||'')===d.person)){toast('同じ会社・担当者がすでに登録されています');return}
+    b.disabled=true;
+    try{await writeCust(custEdit,d);$('custForm').hidden=true;toast(custEdit?'顧客を更新しました':'顧客を登録しました')}catch(err){toast(custErr(err))}finally{b.disabled=false}
+    return}
+  if(b.dataset.cuse){useCust(b.dataset.cuse);$('custSec').hidden=true;if(S.step!=='site')go('site');return}
+  if(b.dataset.chist){$('custSec').hidden=true;$('listSec').hidden=false;$('listQ').value=b.dataset.chist;renderList();$('listSec').scrollIntoView({block:'start'});return}
+  if(b.dataset.cdelask){const w=b.closest('[data-row]');w.innerHTML=`<span class="confirm">この顧客を削除しますか？（保存した見積は消えません） <button class="primary" data-cdelyes="${esc(b.dataset.cdelask)}">削除する</button><button id="cdelNo">やめる</button></span>`;return}
+  if(b.id==='cdelNo'){renderCust();return}
+  if(b.dataset.cdelyes){try{await DB.collection('customers').doc(b.dataset.cdelyes).delete();if(S.client.custId===b.dataset.cdelyes){delete S.client.custId;save()}toast('顧客を削除しました')}catch(err){toast(custErr(err));renderCust()}return}
+  if(b.id==='custSaveCur'){
+    const d={company:S.client.company||'',dept:S.client.dept||'',person:S.client.person||'',tel:S.client.tel||'',email:S.client.email||'',note:S.client.note||''};
+    if(!d.company){toast('会社名を入れてください');return}
+    const ex=CUST.find(c=>c.id===S.client.custId);
+    if(ex)d.address=ex.address||'';
+    b.disabled=true;
+    try{const id=await writeCust(ex?ex.id:'',d);S.client.custId=id;save();refreshPick();toast(ex?'顧客リストを更新しました':'顧客リストに登録しました')}catch(err){toast(custErr(err))}finally{b.disabled=false}
+    return}
+});
+document.addEventListener('input',e=>{if(e.target.id==='listQ')renderList();if(e.target.id==='custQ')renderCust()});
+document.addEventListener('change',e=>{if(e.target.id==='custPick'&&e.target.value&&e.target.value!==S.client.custId)useCust(e.target.value)});
+
+/* ===== PDF保存 ===== */
+
+async function makePdf(btn){
+  if(!window.html2canvas||!window.jspdf){toast('PDF作成の準備ができていません。ページを再読み込みしてください');return}
+  const paper=document.querySelector('.paper');if(!paper)return;
+  btn.disabled=true;btn.textContent='PDFを作成中…';
+  const stage=document.createElement('div');stage.id='pdfStage';
+  const clone=paper.cloneNode(true);clone.style.border='0';clone.style.overflow='visible';stage.appendChild(clone);document.body.appendChild(stage);
+  try{
+    await document.fonts?.ready;
+    const SC=2, canvas=await html2canvas(clone,{scale:SC,backgroundColor:'#ffffff',useCORS:true,logging:false,windowWidth:900});
+    const pxW=canvas.width, pageW=210, pageH=297, mg=10, cw=pageW-mg*2, chMm=pageH-mg*2;
+    const pagePx=Math.floor(pxW*chMm/cw);
+    const base=clone.getBoundingClientRect().top;
+    const cuts=[...clone.querySelectorAll('tr,h4,.pnote,.ptotal,.pgrid,.pstamp,.gwrap,header')].map(el=>Math.round((el.getBoundingClientRect().top-base)*SC)).filter(v=>v>0).sort((a,b)=>a-b);
+    const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    let y=0, page=0;
+    while(y<canvas.height-2){
+      let end=Math.min(y+pagePx,canvas.height);
+      if(end<canvas.height){const c=cuts.filter(v=>v>y+pagePx*0.5&&v<=end);if(c.length)end=c[c.length-1]}
+      const part=document.createElement('canvas');part.width=pxW;part.height=end-y;
+      const ctx=part.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,pxW,part.height);ctx.drawImage(canvas,0,y,pxW,end-y,0,0,pxW,end-y);
+      if(page)pdf.addPage();
+      pdf.addImage(part.toDataURL('image/jpeg',0.92),'JPEG',mg,mg,cw,(end-y)*cw/pxW);
+      pdf.setFontSize(8);pdf.setTextColor(120);pdf.text(String(S.site.no||'')+'  '+(page+1),pageW-mg,pageH-4,{align:'right'});
+      y=end;page++;
+    }
+    const fname=('積算書_'+(S.site.no||'')+'_'+(S.site.name||'')).replace(/[\\/:*?"<>|]/g,'_').slice(0,120)+'.pdf';
+    const data=pdf.output('arraybuffer');
+    const url=URL.createObjectURL(new Blob([data],{type:'application/pdf'}));
+    const link=document.createElement('a');link.href=url;link.download=fname;document.body.appendChild(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast('PDFを保存しました');
+  }catch(e){toast('PDFを作成できませんでした')}
+  finally{stage.remove();btn.disabled=false;btn.textContent='PDFで保存'}
+}
+go(S.step||'site');
+</script>
+
+</body>
+</html>
