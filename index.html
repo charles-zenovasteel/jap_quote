@@ -678,6 +678,7 @@ function startListeners(){
   if(!window.firebase||!FIREBASE_CONFIG.apiKey)return;   // 未設定 → ローカル版
   try{firebase.initializeApp(FIREBASE_CONFIG)}catch(e){console.error(e);return}
   const fs=firebase.firestore();
+  try{fs.settings({experimentalAutoDetectLongPolling:true,merge:true})}catch(e){}
   try{fs.enablePersistence({synchronizeTabs:true}).catch(()=>{})}catch(e){}   // オフラインでも閲覧・入力可
   DB=fs;setDbUi(true);startListeners();
 })();
@@ -698,7 +699,7 @@ function renderList(){
 }
 const fmtDate=iso=>{if(!iso)return '';const d=new Date(iso);return isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
 function snapshotState(){const o=JSON.parse(JSON.stringify(S));delete o.docId;delete o.step;delete o.sample;delete o.lineBase;delete o.autoBase;return o}
-let PENDING_VIA='save', SAVING=false;
+let PENDING_VIA='save', SAVING=false, SAVE_ERR='';
 async function saveEstimate(force,via='save'){
   if(!DB){toast('データベースに接続していません');return false}
   const base=(S.site.base||'').trim();
@@ -722,9 +723,11 @@ async function saveEstimate(force,via='save'){
     updateVerView();renderSteps(calc());
     toast('保存しました（'+S.site.no+'）');return true;
   }catch(e){
-    const m={'permission-denied':'保存できませんでした（入力内容が保存の条件を満たしていません）。','resource-exhausted':'Firestore の利用上限に達しました。時間をおいてお試しください。','unavailable':'オフラインのため保存できません。接続を確認してください。','failed-precondition':'オフラインのため保存できません。接続を確認してください。'}[e&&e.code]||'保存できませんでした。時間をおいてもう一度お試しください。';
+    const m={'permission-denied':'Firestore のルールに拒否されました。最新の firestore.rules が公開（Publish）されているか確認してください。','not-found':'Firestore データベースが見つかりません。(default) データベースが作成されているか確認してください。','resource-exhausted':'Firestore の利用上限に達しました。時間をおいてお試しください。','unavailable':'オフラインのため保存できません。接続を確認してください。','failed-precondition':'オフラインのため保存できません。接続を確認してください。'}[e&&e.code]||'保存できませんでした。時間をおいてもう一度お試しください。';
+    console.error('Firestore save failed',e);
+    SAVE_ERR=`<span class="confirm" style="color:#b42318">保存エラー：${esc(m)}（${esc((e&&e.code)||'unknown')}${e&&e.message?'：'+esc(String(e.message).slice(0,160)):''}） <button id="saveCancel">閉じる</button></span>`;
     toast(m);return false;
-  }finally{SAVING=false;btn.disabled=false;btn.textContent='見積を保存';$('saveWrap').hidden=true}
+  }finally{SAVING=false;btn.disabled=false;btn.textContent='見積を保存';if(SAVE_ERR){$('saveWrap').hidden=false;$('saveWrap').innerHTML=SAVE_ERR;SAVE_ERR=''}else $('saveWrap').hidden=true}
 }
 function loadEstimate(id,dup){
   const r=LIST.find(x=>x.id===id);if(!r||!r.state)return;
@@ -752,7 +755,7 @@ document.addEventListener('click',async e=>{
   if(b.dataset.delask){const w=b.closest('[data-row]');w.innerHTML=`<span class="confirm">削除しますか？ <button class="primary" data-delyes="${esc(b.dataset.delask)}">削除する</button><button id="delNo">やめる</button></span>`;return}
   if(b.id==='delNo'){renderList();return}
   if(b.dataset.delyes){try{await DB.collection('estimates').doc(b.dataset.delyes).delete();if(S.docId===b.dataset.delyes){S.docId=undefined;save()}toast('削除しました')}catch(err){toast('削除できませんでした');renderList()}return}
-  if(b.id==='btnPdf'){if(!DB){makePdf(b);return}if(await saveEstimate(false,'pdf')){renderSheet();makePdf($('btnPdf'))}return}
+  if(b.id==='btnPdf'){if(DB){const ok=await saveEstimate(false,'pdf');if(ok)renderSheet();else if(!$('saveWrap').hidden&&$('saveOver'))return}makePdf($('btnPdf'));return}
   if(b.id==='btnCust'){$('custSec').hidden=!$('custSec').hidden;if(!$('custSec').hidden){renderCust();$('custSec').scrollIntoView({block:'start'})}return}
   if(b.id==='custClose'){$('custSec').hidden=true;$('custForm').hidden=true;return}
   if(b.id==='custNew'){openCustForm(null);return}
@@ -814,7 +817,7 @@ async function makePdf(btn){
     const data=pdf.output('arraybuffer');
     const url=URL.createObjectURL(new Blob([data],{type:'application/pdf'}));
     const link=document.createElement('a');link.href=url;link.download=fname;document.body.appendChild(link);link.click();link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),10000);toast('PDFを保存しました（'+S.site.no+' を記録済み）');
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast(S.docId&&LIST.some(r=>r.id===S.docId&&r.no===S.site.no)?'PDFを保存しました（'+S.site.no+' を記録済み）':'PDFを保存しました（データベースへの記録はできていません）');
   }catch(e){toast('PDFを作成できませんでした')}
   finally{stage.remove();btn.disabled=false;btn.textContent='PDFで保存'}
 }
