@@ -188,7 +188,7 @@ table.gantt i{display:block;height:14px;margin:0 -1px}
     <aside class="sum" aria-label="見積サマリー" id="sum"></aside>
   </div>
   <section class="sheet" id="listSec" hidden aria-label="保存した見積">
-    <h2>保存した見積<span>社内で共有されます。「開く」で編集を再開できます</span></h2>
+    <h2>保存した見積<span>保存・PDF出力のたびに新しい版として記録されます。行をクリックすると画面に読み込みます</span></h2>
     <div class="inline" style="max-width:420px"><input id="listQ" placeholder="管理番号・現場名・お客様で検索" aria-label="見積を検索"></div>
     <div id="listBody"><p class="hint">読み込み中…</p></div>
     <div class="row-actions"><span></span><button id="listClose">閉じる</button></div>
@@ -288,8 +288,15 @@ const blank=()=>({sample:false,step:'site',site:{name:'',address:'',start:'',dat
 
 let S; try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S||!S.site||!S.main)S=sample();
-function genNo(){const d=(S.site.date||today()).replace(/-/g,'');return 'ZJ-'+d+'-01'}
-if(!S.site.no)S.site.no=genNo();
+/* 管理番号 = 基本番号（編集可） + "-" + 版（自動・編集不可）。例：ZJ-20261112-03 */
+const pad2=n=>String(n).padStart(2,'0');
+const splitNo=no=>{const m=String(no||'').match(/^(.*)-(\d{1,3})$/);return m?{base:m[1],ver:+m[2]}:{base:String(no||''),ver:0}};
+const fullNo=(b,v)=>v>0?b+'-'+pad2(v):b;
+const dateBase=()=>'ZJ-'+(S.site.date||today()).replace(/-/g,'');
+function syncNo(){S.site.no=fullNo(S.site.base||'',S.site.ver||0)}
+function genNo(){return dateBase()}   // 互換用
+if(S.site.base==null){const t=S.site.no?splitNo(S.site.no):{base:dateBase(),ver:0};S.site.base=t.base;S.site.ver=t.ver;S.lineBase=t.ver?t.base:null;S.autoBase=!S.site.no}
+syncNo();
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
 function schedule(){
@@ -327,7 +334,7 @@ function renderSheet(){
   const st=S.step, sh=$('sheet');
   if(st==='site'){
     sh.innerHTML=`<h2>現場情報${sampleChip()}</h2>
-    <div class="form">${fld('site','no','管理番号')}<span></span>${fld('site','name','現場名称（工事名）','text','wide')}${fld('site','address','現場住所','text','wide')}${fld('site','start','着工予定日','date')}${fld('site','date','見積日','date')}</div>
+    <div class="form">${fld('site','base','管理番号（版を除く）')}<label class="f">版（自動・変更不可）<input id="site_ver" readonly tabindex="-1" aria-readonly="true" value="${esc(verText())}" style="background:var(--soft);color:var(--muted);cursor:not-allowed"><span class="hint" id="site_vernext" style="font-size:11px">${esc(verNextText())}</span></label>${fld('site','name','現場名称（工事名）','text','wide')}${fld('site','address','現場住所','text','wide')}${fld('site','start','着工予定日','date')}${fld('site','date','見積日','date')}</div>
     <h2>お客様情報</h2>
     <div class="custbar" id="custBar" ${DB?'':'hidden'}>
       <label class="f" style="flex:1 1 260px">顧客リストから選ぶ<select id="custPick" aria-label="顧客リストから選ぶ">${custOptions()}</select></label>
@@ -525,7 +532,7 @@ document.addEventListener('input',e=>{
   const t=e.target, tr=t.closest('tr[data-i]');
   if(t.dataset.m&&tr){S.main[t.dataset.m][+tr.dataset.i][t.dataset.k]=t.value;S.sample=false;if(t.tagName==='SELECT'){renderSheet();return}}
   else if(t.dataset.fl){S.main.firstLen=t.value}
-  else if(t.dataset.g){S[t.dataset.g][t.dataset.k]=t.value;S.sample=false}
+  else if(t.dataset.g){S[t.dataset.g][t.dataset.k]=t.value;S.sample=false;if(t.dataset.g==='site'&&t.dataset.k==='base'){S.autoBase=false;syncNo();updateVerView()}}
   else if(t.dataset.q&&tr){const r=S.qty[+tr.dataset.i];r[t.dataset.q]=t.value;if(t.dataset.q==='dia'){r.per=String(stdPer(t.value));const pe=$(`qty-${tr.dataset.i}-per`);if(pe)pe.value=r.per}S.sample=false}
   else if(t.dataset.s){S.sched[t.dataset.s]=t.value}
   else if(tr&&t.dataset.k){S[S.step][+tr.dataset.i][t.dataset.k]=t.value;S.sample=false}
@@ -547,7 +554,7 @@ document.addEventListener('click',e=>{
   if(b.id==='addRow'){S[S.step].push({});renderSheet();const f=$(`${S.step}-${S[S.step].length-1}-name`);if(f)f.focus();return}
   if(b.id==='addQty'){S.qty.push({dia:'1500',count:'',depth:'',per:String(stdPer('1500'))});renderQty();return}
   if(b.id==='btnReset'){$('resetWrap').innerHTML='<span class="confirm">全項目を消去しますか？ <button id="resetYes" class="primary">消去する</button><button id="resetNo">やめる</button></span>';return}
-  if(b.id==='resetYes'){S=blank();S.site.no=genNo();go('site');resetBtn();toast('新しい積算を開始しました');return}
+  if(b.id==='resetYes'){S=blank();S.site.base=genBase();S.site.ver=0;S.lineBase=null;S.autoBase=true;syncNo();go('site');resetBtn();toast('新しい積算を開始しました');return}
   if(b.id==='resetNo'){resetBtn();return}
   if(b.id==='btnCopy'){copy(tsv(),'表形式（Excelに貼り付け可）でコピーしました');return}
   if(b.id==='btnText'){copy(summaryText(),'見積サマリーをコピーしました');return}
@@ -664,7 +671,7 @@ function startListeners(){
   },err=>{clearTimeout(t2);$('custBody').innerHTML='<p class="hint">顧客リストを読み込めませんでした（'+esc(err.code||'')+'）。</p>'}));
   const t=setTimeout(()=>{if(!listLoaded)$('listBody').innerHTML='<p class="hint">保存した見積をまだ読み込めません。通信状況を確認してください。</p>'},10000);
   UNSUB.push(DB.collection('estimates').orderBy('updatedAt','desc').limit(500).onSnapshot(snap=>{
-    clearTimeout(t);listLoaded=true;LIST=snap.docs.map(d=>({id:d.id,...d.data()}));renderList();renderCust();
+    clearTimeout(t);listLoaded=true;LIST=snap.docs.map(d=>({id:d.id,...d.data()}));updateVerView();renderList();renderCust();
   },err=>{clearTimeout(t);$('listBody').innerHTML='<p class="hint">保存した見積を読み込めませんでした（'+esc(err.code||'')+'）。</p>'}));
 }
 (()=>{
@@ -674,45 +681,69 @@ function startListeners(){
   try{fs.enablePersistence({synchronizeTabs:true}).catch(()=>{})}catch(e){}   // オフラインでも閲覧・入力可
   DB=fs;setDbUi(true);startListeners();
 })();
+function recBase(r){return r.base!=null?r.base:splitNo(r.no).base}
+function recVer(r){return r.ver!=null?+r.ver:splitNo(r.no).ver}
+function maxVer(base){return LIST.filter(r=>recBase(r)===base).reduce((m,r)=>Math.max(m,recVer(r)),0)}
+function genBase(){return dateBase()}
+function verText(){return S.site.ver>0?'v'+pad2(S.site.ver):'未保存'}
+function verNextText(){const b=(S.site.base||'').trim();if(!b)return '';const n=(DB?maxVer(b):S.site.ver||0)+1;return '次に保存すると v'+pad2(n)+'（'+fullNo(b,n)+'）'}
+function updateVerView(){const v=$('site_ver');if(v)v.value=verText();const h=$('site_vernext');if(h)h.textContent=verNextText()}
 function renderList(){
   const q=($('listQ').value||'').trim().toLowerCase();
   const rows=LIST.filter(r=>!q||[r.no,r.siteName,r.client].join(' ').toLowerCase().includes(q));
-  if(!LIST.length){$('listBody').innerHTML='<p class="hint">保存した見積はまだありません。入力後、上の「見積を保存」を押すとここに並びます。</p>';return}
+  if(!LIST.length){$('listBody').innerHTML='<p class="hint">保存した見積はまだありません。「見積を保存」または「PDFで保存」で記録されます。</p>';return}
   if(!rows.length){$('listBody').innerHTML='<p class="hint">該当する見積がありません。</p>';return}
-  $('listBody').innerHTML='<div class="elist">'+rows.map(r=>`<div class="erow ${r.id===S.docId?'cur':''}"><div class="t"><b>${esc(r.no)}　${esc(r.siteName||'（現場名なし）')}</b><span>${esc(r.client||'')}　・　<span class="p">${yen(r.price)}</span>　・　工期 ${num(r.days)}日　・　更新 ${esc(fmtDate(r.updatedAt))}</span></div>
-  <div class="a" data-row="${esc(r.id)}"><button data-open="${esc(r.id)}">開く</button><button data-dup="${esc(r.id)}">複製</button><button class="ghost" data-delask="${esc(r.id)}">削除</button></div></div>`).join('')+'</div>';
+  $('listBody').innerHTML='<div class="elist">'+rows.map(r=>{const v=recVer(r),latest=v===maxVer(recBase(r));return `<div class="erow ${r.id===S.docId?'cur':''}"><div class="t" data-open="${esc(r.id)}" role="button" tabindex="0" style="cursor:pointer" title="クリックで画面に読み込む"><b>${esc(recBase(r))} <span class="chip" style="margin-left:4px">v${pad2(v)}</span>${latest?'':' <span class="hint" style="font-weight:400">（旧版）</span>'}${r.via==='pdf'?' <span class="hint" style="font-weight:400">PDF出力</span>':''}　${esc(r.siteName||'（現場名なし）')}</b><span>${esc(r.client||'')}　・　<span class="p">${yen(r.price)}</span>　・　工期 ${num(r.days)}日　・　${esc(fmtDate(r.updatedAt))}</span></div>
+  <div class="a" data-row="${esc(r.id)}"><button data-open="${esc(r.id)}">開く</button><button data-dup="${esc(r.id)}">複製</button><button class="ghost" data-delask="${esc(r.id)}">削除</button></div></div>`}).join('')+'</div>';
 }
 const fmtDate=iso=>{if(!iso)return '';const d=new Date(iso);return isNaN(d)?'':`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
-function snapshotState(){const o=JSON.parse(JSON.stringify(S));delete o.docId;delete o.step;delete o.sample;return o}
-async function saveEstimate(force){
-  if(!DB)return;
-  if(!S.site.no){toast('STEP 01 で管理番号を入れてください');go('site');return}
-  const id=S.docId||safeId(S.site.no);
-  const clash=LIST.find(r=>r.id===id);
-  if(clash&&id!==S.docId&&!force){
-    $('saveWrap').hidden=false;$('saveWrap').innerHTML=`<span class="confirm">管理番号「${esc(S.site.no)}」の見積がすでにあります。上書きしますか？ <button class="primary" id="saveOver">上書き保存</button><button id="saveCancel">やめる</button></span>`;return}
+function snapshotState(){const o=JSON.parse(JSON.stringify(S));delete o.docId;delete o.step;delete o.sample;delete o.lineBase;delete o.autoBase;return o}
+let PENDING_VIA='save', SAVING=false;
+async function saveEstimate(force,via='save'){
+  if(!DB){toast('データベースに接続していません');return false}
+  const base=(S.site.base||'').trim();
+  if(!base){toast('STEP 01 で管理番号を入れてください');go('site');return false}
+  if(!/^[A-Za-z0-9_.~:@+\-]{1,60}$/.test(base)){toast('管理番号は半角英数字と - _ . のみ、60文字以内にしてください');go('site');return false}
+  if(!force&&base!==S.lineBase&&maxVer(base)>0){
+    PENDING_VIA=via;
+    $('saveWrap').hidden=false;$('saveWrap').innerHTML=`<span class="confirm">管理番号「${esc(base)}」は既に v${pad2(maxVer(base))} まであります。その続き（v${pad2(maxVer(base)+1)}）として保存しますか？ <button class="primary" id="saveOver">続きとして保存</button><button id="saveCancel">やめる</button></span>`;return false}
   const c=calc();
   const btn=$('btnSave');btn.disabled=true;btn.textContent='保存中…';
+  const col=DB.collection('estimates');
+  SAVING=true;
   try{
-    await DB.collection('estimates').doc(id).set({no:S.site.no,siteName:S.site.name||'',client:S.client.company||'',price:Math.round(c.price),days:c.sc.total,updatedAt:new Date().toISOString(),state:snapshotState()});
-    S.docId=id;save();toast('保存しました（'+S.site.no+'）');
+    let v=Math.max(maxVer(base),0)+1, id, ref;
+    await DB.runTransaction(async tx=>{
+      for(let i=0;i<50;i++){id=safeId(fullNo(base,v));ref=col.doc(id);const snap=await tx.get(ref);if(!snap.exists)break;v++}
+      const st=snapshotState();st.site.base=base;st.site.ver=v;st.site.no=fullNo(base,v);
+      tx.set(ref,{no:fullNo(base,v),base,ver:v,via,siteName:S.site.name||'',client:S.client.company||'',price:Math.round(c.price),days:c.sc.total,updatedAt:new Date().toISOString(),state:st});
+    });
+    S.site.base=base;S.site.ver=v;syncNo();S.lineBase=base;S.autoBase=false;S.docId=id;save();{const f=$('site_base');if(f)f.value=base}
+    updateVerView();renderSteps(calc());
+    toast('保存しました（'+S.site.no+'）');return true;
   }catch(e){
-    const m={'permission-denied':'保存する権限がありません。管理者に権限の付与を依頼してください。','resource-exhausted':'Firestore の利用上限に達しました。時間をおいてお試しください。'}[e&&e.code]||'保存できませんでした。時間をおいてもう一度お試しください。';
-    toast(m);
-  }finally{btn.disabled=false;btn.textContent='見積を保存';$('saveWrap').hidden=true}
+    const m={'permission-denied':'保存できませんでした（入力内容が保存の条件を満たしていません）。','resource-exhausted':'Firestore の利用上限に達しました。時間をおいてお試しください。','unavailable':'オフラインのため保存できません。接続を確認してください。','failed-precondition':'オフラインのため保存できません。接続を確認してください。'}[e&&e.code]||'保存できませんでした。時間をおいてもう一度お試しください。';
+    toast(m);return false;
+  }finally{SAVING=false;btn.disabled=false;btn.textContent='見積を保存';$('saveWrap').hidden=true}
 }
 function loadEstimate(id,dup){
   const r=LIST.find(x=>x.id===id);if(!r||!r.state)return;
+  const cur=S.step||'site';
   S={...blank(),...JSON.parse(JSON.stringify(r.state))};S.sample=false;
-  if(dup){S.docId=undefined;S.site.no=nextNo(S.site.no);S.site.date=today()}else S.docId=id;
-  $('listSec').hidden=true;go('site');toast(dup?'複製しました。管理番号を確認して保存してください':'「'+r.no+'」を開きました');
+  if(S.site.base==null){const t=splitNo(S.site.no);S.site.base=t.base;S.site.ver=t.ver}
+  if(dup){S.docId=undefined;S.site.date=today();S.site.base=genBase();S.site.ver=0;S.lineBase=null;S.autoBase=true}
+  else{S.docId=id;S.site.base=recBase(r);S.site.ver=recVer(r);S.lineBase=S.site.base;S.autoBase=false}
+  syncNo();
+  $('listSec').hidden=true;go(dup?'site':cur);
+  toast(dup?'複製しました（新しい管理番号 '+S.site.base+'）':'「'+fullNo(recBase(r),recVer(r))+'」を読み込みました');
 }
 function nextNo(no){const m=String(no||'').match(/^(.*?)(\d+)$/);let cand=m?m[1]+String(+m[2]+1).padStart(m[2].length,'0'):(no||'ZJ')+'-2';
   while(LIST.some(r=>r.no===cand)){const k=cand.match(/^(.*?)(\d+)$/);cand=k[1]+String(+k[2]+1).padStart(k[2].length,'0')}return cand}
 document.addEventListener('click',async e=>{
+  const row=e.target.closest('div[data-open]');if(row&&!e.target.closest('button')){loadEstimate(row.dataset.open,false);return}
   const b=e.target.closest('button');if(!b)return;
   if(b.id==='btnSave'){saveEstimate(false);return}
-  if(b.id==='saveOver'){saveEstimate(true);return}
+  if(b.id==='saveOver'){const via=PENDING_VIA;if(await saveEstimate(true,via)&&via==='pdf'){renderSheet();makePdf($('btnPdf'))}return}
   if(b.id==='saveCancel'){$('saveWrap').hidden=true;return}
   if(b.id==='btnList'){$('listSec').hidden=!$('listSec').hidden;if(!$('listSec').hidden){renderList();$('listSec').scrollIntoView({block:'start'})}return}
   if(b.id==='listClose'){$('listSec').hidden=true;return}
@@ -721,7 +752,7 @@ document.addEventListener('click',async e=>{
   if(b.dataset.delask){const w=b.closest('[data-row]');w.innerHTML=`<span class="confirm">削除しますか？ <button class="primary" data-delyes="${esc(b.dataset.delask)}">削除する</button><button id="delNo">やめる</button></span>`;return}
   if(b.id==='delNo'){renderList();return}
   if(b.dataset.delyes){try{await DB.collection('estimates').doc(b.dataset.delyes).delete();if(S.docId===b.dataset.delyes){S.docId=undefined;save()}toast('削除しました')}catch(err){toast('削除できませんでした');renderList()}return}
-  if(b.id==='btnPdf'){makePdf(b);return}
+  if(b.id==='btnPdf'){if(!DB){makePdf(b);return}if(await saveEstimate(false,'pdf')){renderSheet();makePdf($('btnPdf'))}return}
   if(b.id==='btnCust'){$('custSec').hidden=!$('custSec').hidden;if(!$('custSec').hidden){renderCust();$('custSec').scrollIntoView({block:'start'})}return}
   if(b.id==='custClose'){$('custSec').hidden=true;$('custForm').hidden=true;return}
   if(b.id==='custNew'){openCustForm(null);return}
@@ -748,6 +779,7 @@ document.addEventListener('click',async e=>{
     try{const id=await writeCust(ex?ex.id:'',d);S.client.custId=id;save();refreshPick();toast(ex?'顧客リストを更新しました':'顧客リストに登録しました')}catch(err){toast(custErr(err))}finally{b.disabled=false}
     return}
 });
+document.addEventListener('keydown',e=>{const t=e.target.closest&&e.target.closest('[data-open][role=button]');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();t.click()}});
 document.addEventListener('input',e=>{if(e.target.id==='listQ')renderList();if(e.target.id==='custQ')renderCust()});
 document.addEventListener('change',e=>{if(e.target.id==='custPick'&&e.target.value&&e.target.value!==S.client.custId)useCust(e.target.value)});
 
@@ -782,7 +814,7 @@ async function makePdf(btn){
     const data=pdf.output('arraybuffer');
     const url=URL.createObjectURL(new Blob([data],{type:'application/pdf'}));
     const link=document.createElement('a');link.href=url;link.download=fname;document.body.appendChild(link);link.click();link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),10000);toast('PDFを保存しました');
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast('PDFを保存しました（'+S.site.no+' を記録済み）');
   }catch(e){toast('PDFを作成できませんでした')}
   finally{stage.remove();btn.disabled=false;btn.textContent='PDFで保存'}
 }
